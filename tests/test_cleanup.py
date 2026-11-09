@@ -189,6 +189,38 @@ def test_pick_latest_backup_skips_dirs_without_manifest():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_default_backup_root_name():
+    """默认备份目录使用新名字（不再带任何品牌缩写）"""
+    root = cleanup.default_backup_root()
+    assert os.path.basename(root) == cleanup.BACKUP_DIR_NAME, root
+    assert "WB" not in os.path.basename(root), root
+
+
+def test_list_backups_includes_legacy_dir():
+    """回归（2.5.0 改名）：旧备份目录 WB-Cleanup-Backup 必须仍能被 --list-backups / --restore-latest 发现"""
+    tmp, _root, _proj, _c = make_fake_env({})
+    try:
+        new_root = os.path.join(tmp, cleanup.BACKUP_DIR_NAME)
+        legacy_root = os.path.join(tmp, cleanup.LEGACY_BACKUP_DIR_NAME)
+        new_bk = os.path.join(new_root, "files-0202-000000")
+        old_bk = os.path.join(legacy_root, "files-0101-000000")
+        for d in (new_bk, old_bk):
+            os.makedirs(d)
+            with open(os.path.join(d, "_manifest.txt"), "w", encoding="utf-8") as fh:
+                fh.write("# 原始路径\t字节\n")
+        os.utime(new_bk, (2000, 2000))
+        os.utime(old_bk, (1000, 1000))
+
+        found = cleanup.list_backups(new_root)
+        assert old_bk in found, "旧目录备份必须被发现"
+        assert new_bk in found
+        assert cleanup.pick_latest_backup(new_root) == new_bk, "新旧都存在时取最新"
+        os.remove(os.path.join(new_bk, "_manifest.txt"))
+        assert cleanup.pick_latest_backup(new_root) == old_bk, "新目录无可用备份时应落到旧目录"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_parse_age():
     assert cleanup.parse_age("30d") == 30
     assert cleanup.parse_age("2m") == 60
