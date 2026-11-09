@@ -5,5 +5,5 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
-WB-Cleanup-Backup/
+Chat-Purge-Backup/
 backup-*/

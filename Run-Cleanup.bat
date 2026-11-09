@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul 2>&1
-title WorkBuddy Conversation Purge
+title Conversation Purge
 setlocal
 
 set "PY=%USERPROFILE%\.workbuddy\binaries\python\versions\3.13.12\python.exe"

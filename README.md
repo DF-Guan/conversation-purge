@@ -1,6 +1,6 @@
-<p align="center"><img src="assets/icon.png" width="120" alt="wb-conversation-purge"></p>
+<p align="center"><img src="assets/icon.png" width="120" alt="conversation-purge"></p>
 
-# wb-conversation-purge
+# conversation-purge
 
 [English](README_EN.md) | 简体中文
 
@@ -8,6 +8,8 @@
 > 这个文件，直到你动手之前，一直躺在你的硬盘上。
 
 一个用于**彻底清除 WorkBuddy 本地对话记录**的工具，可独立运行，也可作为 Agent Skill 被对话式触发。
+
+> 本项目为第三方独立工具，由个人开发者维护，与任何平台方无隶属或合作关系；名称与图标均为原创中性设计，不使用任何第三方品牌名称或官方头像。
 
 ---
 
@@ -86,12 +88,12 @@ UPDATE sessions SET deleted_at = <时间戳> WHERE id = <会话UUID>
 
 ```bash
 # WorkBuddy
-git clone https://github.com/DF-Guan/wb-conversation-purge.git \
-    ~/.workbuddy/skills/wb-conversation-purge
+git clone https://github.com/DF-Guan/conversation-purge.git \
+    ~/.workbuddy/skills/conversation-purge
 
 # Claude Code
-git clone https://github.com/DF-Guan/wb-conversation-purge.git \
-    ~/.claude/skills/wb-conversation-purge
+git clone https://github.com/DF-Guan/conversation-purge.git \
+    ~/.claude/skills/conversation-purge
 ```
 
 装好后直接在对话里说：
@@ -109,8 +111,8 @@ Agent 会自动加载并按流程执行。
 ### 作为独立脚本（不用 AI 工具的人）
 
 ```bash
-git clone https://github.com/DF-Guan/wb-conversation-purge.git
-cd wb-conversation-purge
+git clone https://github.com/DF-Guan/conversation-purge.git
+cd conversation-purge
 python scripts/cleanup.py          # 弹出菜单，按提示操作
 ```
 
@@ -162,7 +164,7 @@ python scripts/cleanup.py --all --include-cache --backup --yes
 python scripts/cleanup.py --all --purge-db --backup --yes
 
 # 后悔了，从备份还原
-python scripts/cleanup.py --restore ~/Desktop/WB-Cleanup-Backup/files-0911-092353
+python scripts/cleanup.py --restore ~/Desktop/Chat-Purge-Backup/files-0911-092353
 ```
 
 ### 参数
@@ -176,7 +178,7 @@ python scripts/cleanup.py --restore ~/Desktop/WB-Cleanup-Backup/files-0911-09235
 | `--all` | 处理所有会话 |
 | `--top N` | 按体积倒序只取前 N 项 |
 | `--include-cache` | 附带清理 blobs / file-history / traces / artifact-index |
-| `--backup` | 删除前备份到 `~/Desktop/WB-Cleanup-Backup/<时间戳>/`（含 `_manifest.txt`） |
+| `--backup` | 删除前备份到 `~/Desktop/Chat-Purge-Backup/<时间戳>/`（含 `_manifest.txt`） |
 | `--restore DIR` | 从备份目录还原，文件回到**原始路径** |
 | `--purge-db` | 额外清空数据库里的会话列表（会先备份数据库） |
 | `--yes` | 跳过 `DELETE` 确认输入 |
@@ -272,12 +274,13 @@ python tests/test_cleanup.py
 
 ## 更新记录
 
-- **2.4.1（2026-10）** —— 更换应用图标（扫地机器人），同步仓库与技能包
+- **2.5.0（2026-11）** —— 合规重命名：技能名去掉平台缩写前缀，中文名改为「会话记录彻底清理」，英文名 `Conversation Purge`；图标换为原创中性图形（数据碎片消散），不再使用任何吉祥物/头像风格；SKILL.md 与 README 增加「第三方工具、非官方出品」声明；备份目录更名为 `~/Desktop/Chat-Purge-Backup/`（旧目录 `WB-Cleanup-Backup` 仍可被 `--list-backups` / `--restore-latest` 识别，历史备份不丢）
+- **2.4.1（2026-10）** —— 更换应用图标，同步仓库与技能包
 - **2.4.0（2026-10）** —— 体验升级：清理完成后给出**前后对比 + 对话/缓存分账报告**；新增 `--restore-latest`（一键还原最近备份）与 `--list-backups`（列出可还原备份）；交互菜单新增「一键清理」档，且运行中即可操作不再要求退出应用
 - **2.3.0（2026-10）** —— 覆盖面与易用性升级：新增 `--auto` 一键模式（软删除残留 + 全部可再生缓存）；缓存范围补充 `cache` / `shell-snapshots` / `logs/*.old.log`；`file-history`、`changes-detail` 归为回滚数据默认保留；删除改为**逐文件执行**（单个占用文件不再中断整目录，也不触发环境批量删除保护）；`--list` 增加根目录总占用与可清理量总览；描述改为触发优先，并明确提示 agent 不要手工用 PowerShell 清理
 - **2.2.0（2026-10）** —— 支持 WorkBuddy **运行中直接清理**：不再强制退出应用，被占用文件（如当前对话）自动跳过并标注，其余照常删除；`--purge-db` 运行中会明确拒绝并提示；释放空间统计改为按实际删除量计算
 - **2.1.0（2026-09-30）** —— 应用图标随包分发（`assets/icon.png`）；SKILL.md 增加 `examples_zh` / `examples_en` 示例问题，对齐开放平台「试试这样问我」表单
-- **2.0.0（2026-09）** —— 技能更名 `wb-conversation-purge`（purge 才是这件事的本质）；修复 `--purge-db` 参数从未传入执行函数的 bug；Windows 控制台输出加 UTF-8 保护；purge-db 与缓存清理写入审计日志；SKILL.md 按 WorkBuddy 开放平台规范补齐字段，已具备上架技能市场的完整 frontmatter
+- **2.0.0（2026-09）** —— 技能更名（当次定名 `wb-conversation-purge`，2.5.0 起改为 `conversation-purge`）；修复 `--purge-db` 参数从未传入执行函数的 bug；Windows 控制台输出加 UTF-8 保护；purge-db 与缓存清理写入审计日志；SKILL.md 按 WorkBuddy 开放平台规范补齐字段，已具备上架技能市场的完整 frontmatter
 - **1.1.0** —— 缓存清理独立成模式，不再捆绑删除对话；新增备份与一键还原
 - **1.0.0** —— 首发
 

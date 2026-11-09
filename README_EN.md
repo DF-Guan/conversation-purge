@@ -1,13 +1,15 @@
-<p align="center"><img src="assets/icon.png" width="120" alt="wb-conversation-purge"></p>
+<p align="center"><img src="assets/icon.png" width="120" alt="conversation-purge"></p>
 
 English | [简体中文](README.md)
 
-# wb-conversation-purge
+# conversation-purge
 
 > You clicked "Delete conversation" in WorkBuddy. It didn't actually delete anything.
 > The file sits on your disk until you do something about it.
 
 A tool to **thoroughly wipe WorkBuddy's local conversation records** — runnable standalone, or installed as an Agent Skill that triggers conversationally.
+
+> This is an independent third-party project maintained by an individual developer. It is not affiliated with, endorsed by, or connected to any platform vendor. The name and icon are original neutral designs and use no third-party brand name or official avatar.
 
 ---
 
@@ -86,12 +88,12 @@ Same SKILL.md for both tools — only the install directory differs:
 
 ```bash
 # WorkBuddy
-git clone https://github.com/DF-Guan/wb-conversation-purge.git \
-    ~/.workbuddy/skills/wb-conversation-purge
+git clone https://github.com/DF-Guan/conversation-purge.git \
+    ~/.workbuddy/skills/conversation-purge
 
 # Claude Code
-git clone https://github.com/DF-Guan/wb-conversation-purge.git \
-    ~/.claude/skills/wb-conversation-purge
+git clone https://github.com/DF-Guan/conversation-purge.git \
+    ~/.claude/skills/conversation-purge
 ```
 
 Then just say, in conversation:
@@ -109,8 +111,8 @@ The agent loads it and follows the workflow.
 ### As a standalone script (no AI tooling needed)
 
 ```bash
-git clone https://github.com/DF-Guan/wb-conversation-purge.git
-cd wb-conversation-purge
+git clone https://github.com/DF-Guan/conversation-purge.git
+cd conversation-purge
 python scripts/cleanup.py          # launches the menu
 ```
 
@@ -160,7 +162,7 @@ python scripts/cleanup.py --all --include-cache --backup --yes
 python scripts/cleanup.py --all --purge-db --backup --yes
 
 # Changed your mind — restore from backup
-python scripts/cleanup.py --restore ~/Desktop/WB-Cleanup-Backup/files-0911-092353
+python scripts/cleanup.py --restore ~/Desktop/Chat-Purge-Backup/files-0911-092353
 ```
 
 ### Options
@@ -174,7 +176,7 @@ python scripts/cleanup.py --restore ~/Desktop/WB-Cleanup-Backup/files-0911-09235
 | `--all` | Every session |
 | `--top N` | Keep only the N largest items, descending by size |
 | `--include-cache` | Also clear blobs / file-history / traces / artifact-index |
-| `--backup` | Back up before deleting to `~/Desktop/WB-Cleanup-Backup/<timestamp>/` (includes `_manifest.txt`) |
+| `--backup` | Back up before deleting to `~/Desktop/Chat-Purge-Backup/<timestamp>/` (includes `_manifest.txt`) |
 | `--restore DIR` | Restore from a backup directory, back to the **original paths** |
 | `--purge-db` | Additionally clear the session list in the database (database backed up first) |
 | `--yes` | Skip the `DELETE` confirmation prompt |
@@ -266,12 +268,13 @@ Nine cases, all running against temp directories and fake data — nothing touch
 
 ## Changelog
 
-- **2.4.1 (2026-10)** — New app icon (sweeping robot), synced to the repo and the skill package
+- **2.5.0 (2026-11)** — Compliance rebrand: skill name drops the platform prefix, display name is now `Conversation Purge`; icon replaced with an original neutral mark (data fragments dispersing), no mascot-style avatar; SKILL.md and READMEs now carry an explicit "third-party tool, not affiliated with any platform" notice; backup folder renamed to `~/Desktop/Chat-Purge-Backup/` (the legacy `WB-Cleanup-Backup` folder is still discovered by `--list-backups` / `--restore-latest`, so older backups remain restorable)
+- **2.4.1 (2026-10)** — New app icon, synced to the repo and the skill package
 - **2.4.0 (2026-10)** — UX upgrade: cleanup now reports **before/after totals plus a conversations-vs-caches breakdown**; new `--restore-latest` (restore the newest backup in one flag) and `--list-backups`; interactive menu gains a "one-click" entry and works while the app is running
 - **2.3.0 (2026-10)** — Coverage and usability upgrade: new `--auto` one-shot mode (soft-deleted sessions + every regenerable cache); cache scope now includes `cache`, `shell-snapshots` and rotated `logs/*.old.log`; `file-history` / `changes-detail` treated as rollback data and preserved by default; deletion is now **per-file** (one locked file no longer aborts a directory, and bulk-delete guards are no longer tripped); `--list` reports total vs. cleanable bytes; description rewritten trigger-first and tells agents not to hand-roll PowerShell cleanup
 - **2.2.0 (2026-10)** — Clean **while WorkBuddy is running**: no longer forces an app quit; locked files (e.g. the current conversation) are skipped and reported, everything else is deleted; `--purge-db` refuses cleanly while running; freed-space stats now reflect what was actually removed
 - **2.1.0 (2026-09-30)** — App icon now ships with the package (`assets/icon.png`); SKILL.md adds `examples_zh` / `examples_en` sample prompts matching the marketplace "try asking me" form
-- **2.0.0 (2026-09)** — Renamed to `wb-conversation-purge` (purge is what this actually does); fixed the `--purge-db` flag never reaching the runner function; added UTF-8 output protection for Windows consoles; purge-db and cache cleanup now write to the audit log; SKILL.md updated to the full WorkBuddy marketplace frontmatter spec
+- **2.0.0 (2026-09)** — Renamed (named `wb-conversation-purge` at the time, changed to `conversation-purge` in 2.5.0); fixed the `--purge-db` flag never reaching the runner function; added UTF-8 output protection for Windows consoles; purge-db and cache cleanup now write to the audit log; SKILL.md updated to the full WorkBuddy marketplace frontmatter spec
 - **1.1.0** — Cache cleanup became its own mode, no longer bundled with deleting conversations; added backup and one-click restore
 - **1.0.0** — Initial release
 

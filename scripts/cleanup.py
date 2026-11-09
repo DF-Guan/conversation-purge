@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-WorkBuddy 本地数据彻底清理工具
+本地对话记录与缓存彻底清理工具
 
 用法：
   交互菜单     python cleanup.py
@@ -48,10 +48,14 @@ def hsize(n):
     return "%.1f TB" % n
 
 
+BACKUP_DIR_NAME = "Chat-Purge-Backup"
+LEGACY_BACKUP_DIR_NAME = "WB-Cleanup-Backup"
+
+
 def default_backup_root():
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
     base = desktop if os.path.isdir(desktop) else os.path.expanduser("~")
-    return os.path.join(base, "WB-Cleanup-Backup")
+    return os.path.join(base, BACKUP_DIR_NAME)
 
 
 def path_size(p):
@@ -69,7 +73,7 @@ def path_size(p):
 
 
 def app_running():
-    """检测 WorkBuddy 是否还在运行（运行时文件被占用，删不掉）"""
+    """检测应用是否还在运行（运行时文件被占用，删不掉）"""
     try:
         if os.name == "nt":
             out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
@@ -409,8 +413,8 @@ def run(mode, include_cache=False, want_backup=False, assume_yes=False,
     backup_root = backup_root or default_backup_root()
 
     if not dry_run and app_running():
-        print("[提示] WorkBuddy 正在运行：被占用的文件（如当前对话）会自动跳过，其余照常清理。")
-        print("       如需 100% 清理干净或使用 --purge-db，请完全退出 WorkBuddy 后重跑。\n")
+        print("[提示] 应用正在运行：被占用的文件（如当前对话）会自动跳过，其余照常清理。")
+        print("       如需 100% 清理干净或使用 --purge-db，请完全退出应用后重跑。\n")
 
     idx = scan_projects()
     print("数据根目录：%s" % ROOT)
@@ -453,22 +457,28 @@ def run(mode, include_cache=False, want_backup=False, assume_yes=False,
     print("根目录：%s -> %s（净减 %s）"
           % (hsize(total_all), hsize(total_after), hsize(max(total_all - total_after, 0))))
     if fails:
-        print("被占用项已跳过；完全退出 WorkBuddy 后重跑同一命令即可补清。")
+        print("被占用项已跳过；完全退出应用后重跑同一命令即可补清。")
     audit("模式=%s 删除 %d 项，释放 %s，失败 %d" % (mode, len(plan), hsize(freed), fails))
     print("审计日志：%s" % AUDIT_LOG)
     if purge:
         if app_running():
-            print("\n[跳过] --purge-db 需写入数据库，WorkBuddy 运行中无法执行；请退出后重跑。")
+            print("\n[跳过] --purge-db 需写入数据库，应用运行中无法执行；请退出后重跑。")
         else:
             purge_db(backup_root)
     return 0
 
 
 def list_backups(root):
-    if not os.path.isdir(root):
-        return []
-    return sorted([os.path.join(root, d) for d in os.listdir(root)
-                   if os.path.isdir(os.path.join(root, d))], key=os.path.getmtime, reverse=True)
+    """列出备份目录；默认根目录下同时兼容旧版备份目录名"""
+    roots = [root]
+    if os.path.basename(root.rstrip("\\/")) == BACKUP_DIR_NAME:
+        roots.append(os.path.join(os.path.dirname(root.rstrip("\\/")), LEGACY_BACKUP_DIR_NAME))
+    found = []
+    for r in roots:
+        if not os.path.isdir(r):
+            continue
+        found += [os.path.join(r, d) for d in os.listdir(r) if os.path.isdir(os.path.join(r, d))]
+    return sorted(found, key=os.path.getmtime, reverse=True)
 
 
 def pick_latest_backup(root):
@@ -483,14 +493,14 @@ def interactive():
     idx = scan_projects()
     total_all, cleanable = root_usage()
     print(LINE)
-    print(" WorkBuddy 清理工具")
+    print(" 会话记录彻底清理")
     print(" " + ROOT)
     print(LINE)
     print("\n根目录总占用：%s（其中可清理约 %s）" % (hsize(total_all), hsize(cleanable)))
     print("对话占用：%s" % conv_summary(idx))
     print("缓存占用：%s\n" % hsize(cache_total()))
     if app_running():
-        print("  [!] WorkBuddy 正在运行：占用文件会自动跳过（--purge-db 需退出后执行）\n")
+        print("  [!] 应用正在运行：占用文件会自动跳过（--purge-db 需退出后执行）\n")
     print("  1) 只看预览，不删除")
     print("  2) 【推荐】一键清理：界面已删对话 + 缓存")
     print("  3) 只清理【界面里已删除】的对话")
@@ -557,7 +567,7 @@ def interactive():
     if c in ("5", "6"):
         if input("\n是否同时清空界面会话列表（数据库记录）？(y/N)：").strip().lower() == "y":
             if app_running():
-                print("  [跳过] --purge-db 需要退出 WorkBuddy 后执行。")
+                print("  [跳过] --purge-db 需要退出应用后执行。")
             else:
                 purge_db(default_backup_root())
     input("\n完成，按回车键退出...")
@@ -565,7 +575,7 @@ def interactive():
 
 def main():
     ap = argparse.ArgumentParser(
-        description="彻底清理 WorkBuddy 本地对话与缓存",
+        description="彻底清理本地对话与缓存（数据目录 ~/.workbuddy）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="示例：\n"
                "  cleanup.py --list --auto            # 预览一键清理会删什么\n"
