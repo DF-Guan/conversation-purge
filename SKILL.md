@@ -9,9 +9,9 @@ when_to_use: "清理对话, 删除聊天记录, 彻底删除, 释放空间, 隐�
 examples_zh: ["帮我彻底清理对话记录", "清理一下本地缓存，磁盘快满了", "把 30 天前的对话从硬盘上真删掉"]
 examples_en: ["Purge my chat history from disk", "Free up disk space by clearing local caches", "Delete conversations older than 30 days for real"]
 category: productivity-tools
-version: 2.5.0
+version: 2.6.0
 author: DF
-allowed-tools: Bash(python:*)
+allowed-tools: Bash(python:*), Bash(python3:*)
 agent_created: true
 ---
 
@@ -29,15 +29,59 @@ agent_created: true
 | 软删除标记 | `<数据目录>/workbuddy.db` → `sessions.deleted_at` |
 | 附件与缓存（增长最快） | `<数据目录>/blobs`、`traces`、`artifact-index`、`cache`、`shell-snapshots`、`logs/*.old.log` |
 
-## 第零步：确定脚本绝对路径（不要跳过）
+## 第零步：定位脚本与解释器（不要跳过）
 
-调用技能不会切换工作目录，`scripts/cleanup.py` 这类相对路径会直接找不到文件。加载本技能时，宿主会把 `${CLAUDE_SKILL_DIR}` 插值为本 SKILL.md 所在目录；若宿主未插值，则手动拼出技能根目录绝对路径代替。后续所有命令都用这个绝对路径，**不要先 `cd` 到别处再指望相对路径生效**。
+**不要假设宿主一定替换 `${CLAUDE_SKILL_DIR}`**——未替换时命令会变成 `python "/scripts/cleanup.py"`，直接报「找不到文件」。也不要假设本技能装在固定目录：沙箱、容器、自定义安装位置都可能不同。统一用下面这段，按常见位置依次探测：
+
+```bash
+# 1) 找 cleanup.py：先试固定位置，再在常见技能根目录里搜（搜索范围受限，不会卡住）
+SCRIPT=""
+for p in \
+  "$HOME/.workbuddy/skills/conversation-purge/scripts/cleanup.py" \
+  "${CLAUDE_SKILL_DIR:-/nonexistent}/scripts/cleanup.py" \
+  "${SKILL_DIR:-/nonexistent}/scripts/cleanup.py" \
+  "./scripts/cleanup.py"; do
+  [ -f "$p" ] && { SCRIPT="$p"; break; }
+done
+if [ -z "$SCRIPT" ]; then
+  for base in "$HOME/.workbuddy/skills" "$HOME/.claude/skills" "$HOME/.codebuddy/skills" "${TMPDIR:-/tmp}"; do
+    [ -d "$base" ] || continue
+    SCRIPT=$(find "$base" -maxdepth 4 -name cleanup.py -path '*conversation-purge*' 2>/dev/null | head -1)
+    [ -n "$SCRIPT" ] && break
+  done
+fi
+
+# 2) 找解释器：优先 PATH，其次技能宿主自带的 python
+PY=$(command -v python3 || command -v python)
+[ -n "$PY" ] || PY=$(ls -d "$HOME"/.workbuddy/binaries/python/versions/*/python* 2>/dev/null | head -1)
+
+# 3) 验证：必须打印版本号
+if [ -n "$SCRIPT" ] && [ -n "$PY" ]; then
+  "$PY" "$SCRIPT" --version        # 期望输出：conversation-purge 2.6.0
+else
+  echo "定位失败：SCRIPT=${SCRIPT:-空} PY=${PY:-空}"
+fi
+```
+
+打印不出 `conversation-purge 2.6.0` 就先解决路径或解释器，**不要继续**——这一步能挡掉后面所有「找不到文件 / 命令不存在」的失败。之后所有命令一律写成 `"$PY" "$SCRIPT" 参数`。
+
+## 没有数据时怎么办（容器 / 沙箱 / 新机器）
+
+`--list` 会提示「未检测到数据目录」，这表示本机确实没有可清理的数据。此时：
+
+1. 运行 `"$PY" "$SCRIPT" --self-test`：用临时目录跑完整链路，逐项打印 PASS/FAIL。
+2. 如实告诉用户：本机没有可清理的数据；自检是否通过。
+3. **不要**为了「做出效果」而编造清理结果，也不要在数据目录不存在时执行删除。
+
+```bash
+"$PY" "$SCRIPT" --self-test
+```
 
 ## 标准流程（五步，必须按序）
 
 1. **预览（永远不要跳过）**
    ```bash
-   python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --list
+   "$PY" "$SCRIPT" --list
    ```
    列出对话与缓存各自占用多少。**把清单展示给用户，协助确认清理范围。** 想看谁最占地方，加 `--top 10`（按体积倒序取前 N）。
 
@@ -48,19 +92,19 @@ agent_created: true
 4. **备份后删除** —— 默认带 `--backup`（除非用户明确说不备份），加 `--yes` 跳过脚本内的二次输入：
    ```bash
    # 【首选·一键】界面已删对话 + 全部可再生缓存（含轮转日志）
-   python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --auto --backup --yes
+   "$PY" "$SCRIPT" --auto --backup --yes
 
    # 只清缓存，保留所有对话（场景：只想释放空间）
-   python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --cache-only --backup --yes
+   "$PY" "$SCRIPT" --cache-only --backup --yes
 
    # 只清理界面里已删除的对话
-   python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --soft-deleted --backup --yes
+   "$PY" "$SCRIPT" --soft-deleted --backup --yes
 
    # 清理早于指定时间的对话（支持 30d / 6m / 1y）
-   python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --older-than 30d --backup --yes
+   "$PY" "$SCRIPT" --older-than 30d --backup --yes
 
    # 清理全部对话；加 --purge-db 连界面列表一起清
-   python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --all --backup --yes
+   "$PY" "$SCRIPT" --all --backup --yes
    ```
 
 5. **核验并告知** —— 重新 `--list` 复查；向用户报告脚本给出的结果：**释放量（对话/缓存分账）、根目录清理前后对比**、备份位置（`~/Desktop/Chat-Purge-Backup/<时间戳>/`）、审计日志（`<数据目录>/cleanup-audit.log`）、以及如何用 `--restore` / `--restore-latest` 还原。
@@ -69,11 +113,11 @@ agent_created: true
 
 ```bash
 # 不知道备份时间戳？先列出所有备份，再还原最近一次
-python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --list-backups
-python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --restore-latest
+"$PY" "$SCRIPT" --list-backups
+"$PY" "$SCRIPT" --restore-latest
 
 # 或用指定目录还原
-python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --restore "<备份目录>"
+"$PY" "$SCRIPT" --restore "<备份目录>"
 ```
 
 备份目录里必须有 `_manifest.txt`（记录原始路径），脚本据此把文件放回原位。
@@ -97,6 +141,8 @@ python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --restore "<备份目录>"
 | `--purge-db` | 额外清空数据库里的会话列表（会先备份数据库） |
 | `--yes` | 跳过 DELETE 确认。仅当用户已在对话中确认后使用 |
 | `--backup-dir PATH` | 自定义备份根目录 |
+| `--self-test` | 在临时目录跑通 预览→备份→删除→还原 全链路，**不触碰真实数据** |
+| `--version` | 打印版本号 |
 
 ## 硬规则（红线）
 
@@ -104,6 +150,7 @@ python "${CLAUDE_SKILL_DIR}/scripts/cleanup.py" --restore "<备份目录>"
 - **`--yes` 不等于授权**，它只省掉脚本内的二次输入；真正的授权来自用户在对话里的明确同意。
 - **不强行删除被占用的文件**：运行中的文件由脚本自动跳过并标注，绝不使用强制手段。
 - **默认带 `--backup`**，除非用户明确说不需要备份。
+- **数据目录不存在时不得报告「已清理」**：只说明现状，并用 `--self-test` 证明工具可用。
 - **不碰数据目录之外的数据**，不删 `skills/`、`connectors/`、`credentials/`，不改其他系统文件。
 
 ## 常见坑

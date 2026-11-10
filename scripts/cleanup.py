@@ -38,6 +38,8 @@ DBFILE = os.path.join(ROOT, "workbuddy.db")
 EXTRA_DIRS = ["blobs", "traces", "artifact-index", "cache", "shell-snapshots"]
 AUDIT_LOG = os.path.join(ROOT, "cleanup-audit.log")
 LINE = "-" * 64
+TOOL = "conversation-purge"
+VERSION = "2.6.0"
 
 
 def hsize(n):
@@ -110,11 +112,19 @@ def scan_projects():
     idx = {}
     if not os.path.isdir(PROJECTS):
         return idx
-    for d in os.listdir(PROJECTS):
+    try:
+        entries = os.listdir(PROJECTS)
+    except OSError:
+        return idx
+    for d in entries:
         p = os.path.join(PROJECTS, d)
         if not os.path.isdir(p):
             continue
-        for f in os.listdir(p):
+        try:
+            names = os.listdir(p)
+        except OSError:
+            continue
+        for f in names:
             fp = os.path.join(p, f)
             if not os.path.isfile(fp):
                 continue
@@ -187,7 +197,12 @@ def item_time(sid, files, meta):
             mtimes.append(os.path.getmtime(fp))
         except OSError:
             pass
-    return datetime.datetime.fromtimestamp(max(mtimes)) if mtimes else None
+    if not mtimes:
+        return None
+    try:
+        return datetime.datetime.fromtimestamp(max(mtimes))
+    except (OSError, OverflowError, ValueError):
+        return None
 
 
 def build_plan(mode, idx, include_cache=False, older_days=None, top=None):
@@ -385,7 +400,11 @@ def rotated_logs():
     d = os.path.join(ROOT, "logs")
     out = []
     if os.path.isdir(d):
-        for f in os.listdir(d):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            names = []
+        for f in names:
             fp = os.path.join(d, f)
             if os.path.isfile(fp) and (f.endswith(".old.log") or ".log." in f):
                 out.append(fp)
@@ -408,6 +427,22 @@ def conv_summary(idx):
     return "%d 个会话，%s" % (len(idx), hsize(sum(s for fl in idx.values() for _p, s in fl)))
 
 
+def explain_empty(mode, idx):
+    """没有命中内容时，说明原因与下一步，避免只回一句「没有匹配的内容」"""
+    print("没有匹配的内容。")
+    if mode == "soft":
+        print("说明：界面里已删除、但文件仍留在磁盘上的会话数为 0。")
+    elif mode == "cache":
+        print("说明：当前没有可再生的缓存目录（blobs / traces / cache 等）。")
+    elif mode == "older":
+        print("说明：没有早于指定时间的对话。")
+    if not idx:
+        print("      本机暂无可识别的对话文件。")
+    else:
+        print("      本机共识别到 %d 个会话文件。" % len(idx))
+    print("可运行 --list 查看全部会话，或 --self-test 验证工具本身正常。")
+
+
 def run(mode, include_cache=False, want_backup=False, assume_yes=False,
         purge=False, backup_root=None, dry_run=False, older_days=None, top=None):
     backup_root = backup_root or default_backup_root()
@@ -417,7 +452,14 @@ def run(mode, include_cache=False, want_backup=False, assume_yes=False,
         print("       如需 100% 清理干净或使用 --purge-db，请完全退出应用后重跑。\n")
 
     idx = scan_projects()
-    print("数据根目录：%s" % ROOT)
+    if not os.path.isdir(ROOT):
+        print("未检测到数据目录：%s" % os.path.normpath(ROOT))
+        print("说明：本机没有该目录，通常意味着当前环境里没有可清理的数据")
+        print("      （例如在容器/沙箱中运行，或该应用尚未在本机使用过）。")
+        print("可运行 --self-test 验证工具本身是否正常。")
+        return 0
+
+    print("数据根目录：%s" % os.path.normpath(ROOT))
     total_all, cleanable = root_usage()
     print("根目录总占用：%s（其中可清理约 %s；其余为程序本体、对话数据与配置，不动）"
           % (hsize(total_all), hsize(cleanable)))
@@ -426,7 +468,7 @@ def run(mode, include_cache=False, want_backup=False, assume_yes=False,
 
     plan = build_plan(mode, idx, include_cache, older_days, top)
     if not plan:
-        print("没有匹配的内容。")
+        explain_empty(mode, idx)
         return 0
 
     print(LINE)
@@ -573,6 +615,68 @@ def interactive():
     input("\n完成，按回车键退出...")
 
 
+def self_test():
+    """在临时目录内跑通全链路：造数据 -> 预览 -> 备份 -> 删除 -> 还原
+
+    全程只碰 tempfile 建出来的临时目录，不读取、不修改真实数据。
+    用途：在没有任何可清理数据的环境（如容器/沙箱）里验证工具本身可用。
+    """
+    global ROOT, PROJECTS, DBFILE, AUDIT_LOG
+    import tempfile
+
+    saved = (ROOT, PROJECTS, DBFILE, AUDIT_LOG)
+    tmp = tempfile.mkdtemp(prefix="purge-selftest-")
+    checks = []
+    try:
+        ROOT = os.path.join(tmp, ".workbuddy")
+        PROJECTS = os.path.join(ROOT, "projects")
+        DBFILE = os.path.join(ROOT, "workbuddy.db")
+        AUDIT_LOG = os.path.join(ROOT, "cleanup-audit.log")
+
+        proj = os.path.join(PROJECTS, "demo-project")
+        os.makedirs(proj)
+        sid = "11111111-1111-4111-8111-111111111111"
+        jsonl = os.path.join(proj, sid + ".jsonl")
+        with open(jsonl, "w", encoding="utf-8") as fh:
+            fh.write('{"role":"user","content":"selftest"}\n')
+        with open(os.path.join(proj, sid + ".meta.json"), "w", encoding="utf-8") as fh:
+            fh.write('{"title":"自测会话"}')
+        conn = sqlite3.connect(DBFILE)
+        conn.execute("create table sessions "
+                     "(id text, title text, updated_at integer, deleted_at integer)")
+        conn.execute("insert into sessions values (?,?,?,?)", (sid, "自测会话", 0, 1))
+        conn.commit()
+        conn.close()
+
+        idx = scan_projects()
+        plan = build_plan("soft", idx)
+        checks.append(("识别界面已删会话", len(plan) == 1))
+
+        bk_root = os.path.join(tmp, "backup")
+        backups([p for _l, ps in plan for p in ps if os.path.isfile(p)], "files", bk_root)
+        checks.append(("删除前备份", os.path.isdir(bk_root) and bool(pick_latest_backup(bk_root))))
+
+        do_delete(plan)
+        checks.append(("按计划删除", not os.path.exists(jsonl)))
+
+        latest = pick_latest_backup(bk_root)
+        restore(latest)
+        checks.append(("从备份还原", os.path.isfile(jsonl)))
+    except Exception as e:
+        checks.append(("执行过程无异常", False))
+        print("[自测] 异常：%s" % e)
+    finally:
+        ROOT, PROJECTS, DBFILE, AUDIT_LOG = saved
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    print(LINE)
+    for name, ok in checks:
+        print("  %s  %s" % ("PASS" if ok else "FAIL", name))
+    all_ok = bool(checks) and all(ok for _n, ok in checks)
+    print("[自测] %s：预览 → 备份 → 删除 → 还原" % ("通过" if all_ok else "未通过"))
+    return 0 if all_ok else 1
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="彻底清理本地对话与缓存（数据目录 ~/.workbuddy）",
@@ -583,7 +687,9 @@ def main():
                "  cleanup.py --cache-only --backup --yes\n"
                "  cleanup.py --older-than 30d --backup --yes\n"
                "  cleanup.py --list-backups           # 查看所有备份\n"
-               "  cleanup.py --restore-latest         # 还原最近一次备份\n")
+               "  cleanup.py --restore-latest         # 还原最近一次备份\n"
+               "  cleanup.py --self-test              # 自检：不碰真实数据\n"
+               "  cleanup.py --version                # 版本号\n")
     # 注意：--list 是"预览"修饰符而非模式，不能放进互斥组，
     # 否则 "--list --cache-only" 这类组合会被 argparse 拒绝。
     ap.add_argument("--list", action="store_true", help="只预览，不删除")
@@ -603,7 +709,17 @@ def main():
     ap.add_argument("--purge-db", action="store_true", help="同时清空数据库中的会话列表")
     ap.add_argument("--yes", action="store_true", help="跳过 DELETE 确认（仅限已确认过）")
     ap.add_argument("--backup-dir", default=None, help="备份存放根目录")
+    ap.add_argument("--self-test", action="store_true",
+                    help="在临时目录跑通预览/备份/删除/还原全链路，不触碰真实数据")
+    ap.add_argument("--version", action="store_true", help="打印版本号")
     args = ap.parse_args()
+
+    if args.version:
+        print("%s %s" % (TOOL, VERSION))
+        sys.exit(0)
+
+    if args.self_test:
+        sys.exit(self_test())
 
     if args.list_backups:
         root = args.backup_dir or default_backup_root()

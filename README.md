@@ -183,6 +183,8 @@ python scripts/cleanup.py --restore ~/Desktop/Chat-Purge-Backup/files-0911-09235
 | `--purge-db` | 额外清空数据库里的会话列表（会先备份数据库） |
 | `--yes` | 跳过 `DELETE` 确认输入 |
 | `--backup-dir PATH` | 自定义备份根目录 |
+| `--self-test` | 在临时目录跑通「预览 → 备份 → 删除 → 还原」全链路，**不碰真实数据** |
+| `--version` | 打印版本号 |
 
 ---
 
@@ -191,7 +193,7 @@ python scripts/cleanup.py --restore ~/Desktop/Chat-Purge-Backup/files-0911-09235
 删除是不可逆的，所以工具在几个地方刻意做得很保守：
 
 1. **强制预览** —— Agent 模式下，SKILL.md 硬性规定：没有把清单给用户看过，不允许执行删除
-2. **进程守护** —— 检测到 WorkBuddy 还在跑就不删（预览除外），避免删掉一半
+2. **进程守护** —— 应用还在跑也能清理，被占用的文件（如当前对话）自动 `[跳过]`，其余照常删除；只有 `--purge-db` 和「要求 100% 清干净」才需要先完全退出
 3. **双重确认** —— 手动输入 `DELETE`，或 Agent 已在对话中征得同意后才用 `--yes`
 4. **默认可备份** —— 备份开着才会后悔有门
 5. **备份可还原** —— 备份目录里带 `_manifest.txt`，记录原始绝对路径，`--restore` 能把文件放回原位
@@ -257,7 +259,7 @@ python scripts/cleanup.py --restore ~/Desktop/Chat-Purge-Backup/files-0911-09235
 |---|---|
 | Windows | ✅ 已实测（含回收站行为、PowerShell 编码） |
 | macOS / Linux | ⚠️ 代码支持（`pgrep` 检测、`expanduser("~")` 路径），**尚未实机测试** |
-| Claude Code | ✅ 兼容（frontmatter 字段均被支持），需用 `${CLAUDE_SKILL_DIR}` 定位脚本 |
+| Claude Code | ✅ 兼容（frontmatter 字段均被支持），脚本定位见 SKILL.md 第零步 |
 | WorkBuddy | ✅ 原生支持 |
 
 需要 Python 3.9+，**无第三方依赖**。三平台 × 三个 Python 版本由 GitHub Actions 自动跑测试。
@@ -265,15 +267,17 @@ python scripts/cleanup.py --restore ~/Desktop/Chat-Purge-Backup/files-0911-09235
 ### 自行验证
 
 ```bash
-python tests/test_cleanup.py
+python tests/test_cleanup.py            # 15 个用例，全用临时目录和假数据
+python scripts/cleanup.py --self-test   # 端到端自检：预览→备份→删除→还原
 ```
 
-9 个用例，全部用临时目录和假数据，不会碰到你的真实文件。
+两者都在临时目录里造数据，**不会碰到你的真实文件**；没有可清理的数据时也能跑，可用来确认工具本身是否正常。
 
 ---
 
 ## 更新记录
 
+- **2.6.0（2026-11）** —— 面向「空环境可用性」加固（沙箱/容器/新机器评测）：新增 `--self-test`（在临时目录跑通 预览→备份→删除→还原，逐项 PASS/FAIL，不碰真实数据）与 `--version`；SKILL.md 第零步改为**多路径探测 + 解释器兜底**，不再依赖宿主是否替换 `${CLAUDE_SKILL_DIR}`；数据目录不存在时给出明确说明并引导自检，**绝不报告「已清理」**；无命中项时说明原因与下一步，不再只回一句「没有匹配的内容」；`projects` / `logs` 目录不可读、数据库缺表或损坏时均降级处理而非崩溃；测试增至 15 项
 - **2.5.0（2026-11）** —— 合规重命名：技能名去掉平台缩写前缀，中文名改为「会话记录彻底清理」，英文名 `Conversation Purge`；图标换为原创中性图形（数据碎片消散），不再使用任何吉祥物/头像风格；SKILL.md 与 README 增加「第三方工具、非官方出品」声明；备份目录更名为 `~/Desktop/Chat-Purge-Backup/`（旧目录 `WB-Cleanup-Backup` 仍可被 `--list-backups` / `--restore-latest` 识别，历史备份不丢）
 - **2.4.1（2026-10）** —— 更换应用图标，同步仓库与技能包
 - **2.4.0（2026-10）** —— 体验升级：清理完成后给出**前后对比 + 对话/缓存分账报告**；新增 `--restore-latest`（一键还原最近备份）与 `--list-backups`（列出可还原备份）；交互菜单新增「一键清理」档，且运行中即可操作不再要求退出应用

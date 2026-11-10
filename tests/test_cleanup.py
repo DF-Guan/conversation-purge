@@ -8,10 +8,12 @@
 """
 import os
 import sys
+import io
 import shutil
 import sqlite3
 import tempfile
 import datetime
+import contextlib
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 import cleanup
@@ -219,6 +221,55 @@ def test_list_backups_includes_legacy_dir():
         assert cleanup.pick_latest_backup(new_root) == old_bk, "新目录无可用备份时应落到旧目录"
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_run_without_data_dir_returns_clean_message():
+    """沙箱/容器里没有数据目录：必须正常退出并给出说明，而不是抛异常或装作清理过"""
+    tmp = tempfile.mkdtemp(prefix="wbclean_nodata_")
+    saved = (cleanup.ROOT, cleanup.PROJECTS, cleanup.DBFILE, cleanup.AUDIT_LOG)
+    buf = io.StringIO()
+    try:
+        cleanup.ROOT = os.path.join(tmp, ".workbuddy")   # 故意不创建
+        cleanup.PROJECTS = os.path.join(cleanup.ROOT, "projects")
+        cleanup.DBFILE = os.path.join(cleanup.ROOT, "workbuddy.db")
+        cleanup.AUDIT_LOG = os.path.join(tmp, "audit.log")
+        with contextlib.redirect_stdout(buf):
+            rc = cleanup.run("auto", dry_run=True)
+        out = buf.getvalue()
+        assert rc == 0, rc
+        assert "未检测到数据目录" in out, out
+        assert "--self-test" in out, "应引导用户用自检确认工具可用"
+        assert "释放" not in out, "没有数据时绝不能报告已释放空间"
+    finally:
+        cleanup.ROOT, cleanup.PROJECTS, cleanup.DBFILE, cleanup.AUDIT_LOG = saved
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_explain_empty_is_actionable():
+    """没有命中项时，不能只回一句「没有匹配的内容」"""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        cleanup.explain_empty("soft", {})
+    out = buf.getvalue()
+    assert "没有匹配的内容" in out
+    assert "0" in out, "要说明界面已删会话为 0"
+    assert "--list" in out or "--self-test" in out, "要给出下一步"
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        cleanup.explain_empty("older", {"a": [("x.jsonl", 10)]})
+    assert "1 个会话文件" in buf.getvalue(), buf.getvalue()
+
+
+def test_self_test_roundtrip_passes():
+    """--self-test 必须在临时目录里跑通全链路，且不碰真实数据"""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = cleanup.self_test()
+    out = buf.getvalue()
+    assert rc == 0, out
+    assert "FAIL" not in out, out
+    assert "自测] 通过" in out, out
 
 
 def test_parse_age():

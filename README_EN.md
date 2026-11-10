@@ -181,6 +181,8 @@ python scripts/cleanup.py --restore ~/Desktop/Chat-Purge-Backup/files-0911-09235
 | `--purge-db` | Additionally clear the session list in the database (database backed up first) |
 | `--yes` | Skip the `DELETE` confirmation prompt |
 | `--backup-dir PATH` | Custom backup root |
+| `--self-test` | Round-trip `preview → backup → delete → restore` inside a temp dir; **never touches real data** |
+| `--version` | Print version |
 
 ---
 
@@ -268,6 +270,7 @@ Nine cases, all running against temp directories and fake data — nothing touch
 
 ## Changelog
 
+- **2.6.0 (2026-11)** — Hardening for empty environments (sandbox / container / fresh machine): new `--self-test` runs the full `preview → backup → delete → restore` round-trip in a temp dir with per-step PASS/FAIL and never touches real data; new `--version`; step 0 of SKILL.md now probes multiple install locations and falls back across interpreters instead of relying on `${CLAUDE_SKILL_DIR}` substitution; a missing data directory now produces an explicit explanation plus a self-test hint and **never** reports "cleaned"; an empty result now explains why and what to do next; unreadable `projects`/`logs` dirs and missing/corrupt database tables degrade gracefully instead of crashing; test count up to 15
 - **2.5.0 (2026-11)** — Compliance rebrand: skill name drops the platform prefix, display name is now `Conversation Purge`; icon replaced with an original neutral mark (data fragments dispersing), no mascot-style avatar; SKILL.md and READMEs now carry an explicit "third-party tool, not affiliated with any platform" notice; backup folder renamed to `~/Desktop/Chat-Purge-Backup/` (the legacy `WB-Cleanup-Backup` folder is still discovered by `--list-backups` / `--restore-latest`, so older backups remain restorable)
 - **2.4.1 (2026-10)** — New app icon, synced to the repo and the skill package
 - **2.4.0 (2026-10)** — UX upgrade: cleanup now reports **before/after totals plus a conversations-vs-caches breakdown**; new `--restore-latest` (restore the newest backup in one flag) and `--list-backups`; interactive menu gains a "one-click" entry and works while the app is running
